@@ -12,7 +12,7 @@ output:
     toc_float: yes
 ---
 
-Este relatório, tem como objetivo analisar dados de commits no github. Utilizaremos uma amostra de dados da atividade global do github entre o período de 2016 e 2017. As linguagens que vamos analisar serão *javascript* e *typescript*.
+Este relatório, tem como objetivo analisar dados de commits no github. Utilizaremos uma amostra de dados da atividade global do github entre o período de 01/2016 e 05/2017. As linguagens que vamos analisar serão *java* e *javascript*.
 
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
@@ -29,7 +29,26 @@ dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
                                     the_month = col_integer(),
                                     the_year = col_integer(),
                                     users = col_integer())) %>% 
-  filter(file_extension %in% c("ts", "py"))
+  filter(file_extension %in% c("java", "js"))
+
+```
+
+```{r}
+dados_github = dados_github %>% 
+  mutate(date = paste(the_year, the_month, month_day, sep='-') %>%  as.Date(.))
+
+dados_github$weekday = weekdays(as.Date(dados_github$date))
+
+dados_github = dados_github %>% 
+  mutate(is_weekend = ifelse(weekday %in% c("sábado", "domingo"),TRUE, FALSE))
+
+dados_java = dados_github %>% 
+  filter(file_extension == "java")
+
+dados_js = dados_github %>% 
+  filter(file_extension == "js")
+
+
 ```
 
 Antes de responder algumas perguntas, vamos dar uma olhada na linha do tempo das duas linguagens.
@@ -37,11 +56,248 @@ Antes de responder algumas perguntas, vamos dar uma olhada na linha do tempo das
 #### Ano de 2016
 
 ```{r}
-dados_github %>% 
+p =
+  dados_github %>% 
   filter(the_year == "2016") %>% 
-  ggplot(aes(x = the_month, y = users)) +
-  geom_point() +
-  facet_wrap( ~ file_extension)
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(colour = "#800000") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
 ```
 
+#### Ano de 2017
+```{r}
+p =
+  dados_github %>% 
+  filter(the_year == "2017") %>% 
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(colour = "#003366") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+```
+
+Observando os dois gráficos, verificamos que não há outliers.
+
+### Para cada uma delas, há uma diferença significativa na sua popularidade durante a semana e durante o fim de semana? Essa diferença é grande?
+
+#### Java
+
+Para respondermos essa pergunta, precimas aplicar algumas técnicas de estatística. Primeiro, vamos utilizar o método de reamostragem chamado *bootstrapping*, ele é utilizado para aproximar distribuição na amostra de um levantamento estatístico.
+
+```{r}
+amostra = dados_java %>%  
+  filter(is_weekend == "FALSE") %>% 
+  sample_n(70) %>% 
+  pull(users)
+
+media_amostra = mean(amostra)
+
+repeticoes = 4000
+
+exp_com_bootstrap <- function(x){
+  boot_x <- sample(x,
+                   size = NROW(x), 
+                   replace = TRUE)
+  return(mean(boot_x))
+}
+
+experimentos = data_frame(i = 1:repeticoes) %>% 
+    rowwise() %>% 
+    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
+    ungroup() 
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
+  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os dias de semana")
+summary(experimentos)
+
+```
+
+
+Agora, vamos calcular o intervalo de confiança para a média.
+
+```{r}
+alpha = .05
+quantile(experimentos$media_exp, 
+         probs = c(.05, .95))
+
+cis = experimentos %>% 
+    mutate(diferenca = media_exp - media_amostra) %>% 
+    summarise(l = quantile(diferenca, alpha/2), 
+              u = quantile(diferenca, 1 - alpha/2)) %>% 
+    mutate(ci_lower = media_amostra - u, 
+           ci_upper = media_amostra - l)
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
+  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = media_amostra), colour = "green")
+  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os dias de semana")
+
+```
+
+```{r}
+amostra = dados_java %>%  
+  filter(is_weekend == "TRUE") %>% 
+  sample_n(70) %>% 
+  pull(users)
+
+media_amostra = mean(amostra)
+
+repeticoes = 4000
+
+exp_com_bootstrap <- function(x){
+  boot_x <- sample(x,
+                   size = NROW(x), 
+                   replace = TRUE)
+  return(mean(boot_x))
+}
+
+experimentos = data_frame(i = 1:repeticoes) %>% 
+    rowwise() %>% 
+    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
+    ungroup() 
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
+  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os fins de semana")
+summary(experimentos)
+
+```
+
+```{r}
+alpha = .05
+quantile(experimentos$media_exp, 
+         probs = c(.05, .95))
+
+cis = experimentos %>% 
+    mutate(diferenca = media_exp - media_amostra) %>% 
+    summarise(l = quantile(diferenca, alpha/2), 
+              u = quantile(diferenca, 1 - alpha/2)) %>% 
+    mutate(ci_lower = media_amostra - u, 
+           ci_upper = media_amostra - l)
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
+  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = media_amostra), colour = "green")
+  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os fins de semana")
+
+```
+
+#### Javascript
+
+
+```{r}
+amostra = dados_js %>%  
+  filter(is_weekend == "FALSE") %>% 
+  sample_n(70) %>% 
+  pull(users)
+
+media_amostra = mean(amostra)
+
+repeticoes = 4000
+
+exp_com_bootstrap <- function(x){
+  boot_x <- sample(x,
+                   size = NROW(x), 
+                   replace = TRUE)
+  return(mean(boot_x))
+}
+
+experimentos = data_frame(i = 1:repeticoes) %>% 
+    rowwise() %>% 
+    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
+    ungroup() 
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
+  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os dias de semana")
+summary(experimentos)
+
+```
+
+
+```{r}
+alpha = .05
+quantile(experimentos$media_exp, 
+         probs = c(.05, .95))
+
+cis = experimentos %>% 
+    mutate(diferenca = media_exp - media_amostra) %>% 
+    summarise(l = quantile(diferenca, alpha/2), 
+              u = quantile(diferenca, 1 - alpha/2)) %>% 
+    mutate(ci_lower = media_amostra - u, 
+           ci_upper = media_amostra - l)
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
+  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = media_amostra), colour = "green")
+  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os dias de semana")
+
+```
+
+```{r}
+amostra = dados_js %>%  
+  filter(is_weekend == "TRUE") %>% 
+  sample_n(70) %>% 
+  pull(users)
+
+media_amostra = mean(amostra)
+
+repeticoes = 4000
+
+exp_com_bootstrap <- function(x){
+  boot_x <- sample(x,
+                   size = NROW(x), 
+                   replace = TRUE)
+  return(mean(boot_x))
+}
+
+experimentos = data_frame(i = 1:repeticoes) %>% 
+    rowwise() %>% 
+    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
+    ungroup() 
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
+  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os fins de semana")
+summary(experimentos)
+
+```
+
+```{r}
+alpha = .05
+quantile(experimentos$media_exp, 
+         probs = c(.05, .95))
+
+cis = experimentos %>% 
+    mutate(diferenca = media_exp - media_amostra) %>% 
+    summarise(l = quantile(diferenca, alpha/2), 
+              u = quantile(diferenca, 1 - alpha/2)) %>% 
+    mutate(ci_lower = media_amostra - u, 
+           ci_upper = media_amostra - l)
+
+ggplot(experimentos, aes(x = media_exp)) + 
+  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
+  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
+  geom_vline(aes(xintercept = media_amostra), colour = "green") +
+  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os fins de semana")
+
+```
 
