@@ -1,0 +1,47 @@
+---
+title: "Dados de commits no github"
+date: 2018-07-07
+author: "Mainara Cavalcanti de Farias"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+Este relatório, tem como objetivo analisar dados de commits no github. Utilizaremos uma amostra de dados da atividade global do github entre o período de 2016 e 2017. As linguagens que vamos analisar serão *javascript* e *typescript*.
+
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(plotly)
+```
+
+```{r}
+dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
+                        progress = FALSE,
+                        col_types = cols(file_extension = col_character(),
+                                    month_day = col_integer(),
+                                    the_month = col_integer(),
+                                    the_year = col_integer(),
+                                    users = col_integer())) %>% 
+  filter(file_extension %in% c("ts", "py"))
+```
+
+Antes de responder algumas perguntas, vamos dar uma olhada na linha do tempo das duas linguagens.
+
+#### Ano de 2016
+
+```{r}
+dados_github %>% 
+  filter(the_year == "2016") %>% 
+  ggplot(aes(x = the_month, y = users)) +
+  geom_point() +
+  facet_wrap( ~ file_extension)
+```
+
+
