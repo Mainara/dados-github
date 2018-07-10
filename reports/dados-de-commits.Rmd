@@ -19,8 +19,10 @@ Este relatório, tem como objetivo analisar dados de commits no github. Utilizar
 library(tidyverse)
 library(here)
 library(plotly)
+library(resample, quietly = TRUE)
 ```
 
+Aqui está sendo feita a importação dos dados e filtrando as liguagens que foram escolhidas para serem analisadas.
 ```{r}
 dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
                         progress = FALSE,
@@ -32,6 +34,7 @@ dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
   filter(file_extension %in% c("java", "js"))
 
 ```
+
 
 ```{r}
 dados_github = dados_github %>% 
@@ -47,7 +50,6 @@ dados_java = dados_github %>%
 
 dados_js = dados_github %>% 
   filter(file_extension == "js")
-
 
 ```
 
@@ -90,214 +92,101 @@ Observando os dois gráficos, verificamos que não há outliers.
 
 ### Para cada uma delas, há uma diferença significativa na sua popularidade durante a semana e durante o fim de semana? Essa diferença é grande?
 
+Para respondermos essa pergunta, precimas aplicar algumas técnicas de estatística. Primeiro, vamos utilizar o método de reamostragem chamado *bootstrapping*, ele é utilizado para aproximar distribuição na amostra de um levantamento estatístico. Após a aplicação desse método, o *Intervalo de Confiança* será calculado e assim poderemos inferir o resultado da amostra para toda a população.
+
 #### Java
 
-Para respondermos essa pergunta, precimas aplicar algumas técnicas de estatística. Primeiro, vamos utilizar o método de reamostragem chamado *bootstrapping*, ele é utilizado para aproximar distribuição na amostra de um levantamento estatístico.
 
 ```{r}
-amostra = dados_java %>%  
-  filter(is_weekend == "FALSE") %>% 
-  sample_n(70) %>% 
-  pull(users)
+amostra_semana <- dados_java %>%  filter(is_weekend == "FALSE") %>% sample_n(70)
+amostra_semana <- rename(amostra_semana,users_semana = users)
 
-media_amostra = mean(amostra)
+amostra_fim_de_semana <- dados_java %>%  filter(is_weekend == "TRUE") %>% sample_n(70)
+amostra_fim_de_semana <- rename(amostra_fim_de_semana,users_fim_de_semana = users)
 
-repeticoes = 4000
-
-exp_com_bootstrap <- function(x){
-  boot_x <- sample(x,
-                   size = NROW(x), 
-                   replace = TRUE)
-  return(mean(boot_x))
-}
-
-experimentos = data_frame(i = 1:repeticoes) %>% 
-    rowwise() %>% 
-    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
-    ungroup() 
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
-  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os dias de semana")
-summary(experimentos)
-
+b <- bootstrap(amostra_semana, median(users_semana))
+mediana_g1 <- CI.bca(b, probs = c(.05, .95))
+mediana_g1
+b <- bootstrap(amostra_fim_de_semana, median(users_fim_de_semana))
+mediana_g2 <- CI.bca(b, probs = c(.05, .95))
+mediana_g2
 ```
 
-
-Agora, vamos calcular o intervalo de confiança para a média.
+Aqui, iremos utilizar uma confiança de 95% para verificar os diferentes intervalos:
 
 ```{r}
-alpha = .05
-quantile(experimentos$media_exp, 
-         probs = c(.05, .95))
-
-cis = experimentos %>% 
-    mutate(diferenca = media_exp - media_amostra) %>% 
-    summarise(l = quantile(diferenca, alpha/2), 
-              u = quantile(diferenca, 1 - alpha/2)) %>% 
-    mutate(ci_lower = media_amostra - u, 
-           ci_upper = media_amostra - l)
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
-  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = media_amostra), colour = "green")
-  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os dias de semana")
-
+df <- data.frame(rbind(mediana_g1, 
+                      mediana_g2))
+df$medida = row.names(df)
+df %>% 
+  ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
+  geom_errorbar(width = .2)
 ```
 
-```{r}
-amostra = dados_java %>%  
-  filter(is_weekend == "TRUE") %>% 
-  sample_n(70) %>% 
-  pull(users)
+Há claramente uma diferença entre a popularidade durante a semana e o fim de semana, os intervalos não se interceptaram e estão distantes.
 
-media_amostra = mean(amostra)
-
-repeticoes = 4000
-
-exp_com_bootstrap <- function(x){
-  boot_x <- sample(x,
-                   size = NROW(x), 
-                   replace = TRUE)
-  return(mean(boot_x))
-}
-
-experimentos = data_frame(i = 1:repeticoes) %>% 
-    rowwise() %>% 
-    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
-    ungroup() 
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
-  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os fins de semana")
-summary(experimentos)
-
-```
-
-```{r}
-alpha = .05
-quantile(experimentos$media_exp, 
-         probs = c(.05, .95))
-
-cis = experimentos %>% 
-    mutate(diferenca = media_exp - media_amostra) %>% 
-    summarise(l = quantile(diferenca, alpha/2), 
-              u = quantile(diferenca, 1 - alpha/2)) %>% 
-    mutate(ci_lower = media_amostra - u, 
-           ci_upper = media_amostra - l)
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
-  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = media_amostra), colour = "green")
-  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os fins de semana")
-
-```
 
 #### Javascript
 
+```{r}
+amostra_semana <- dados_js %>%  filter(is_weekend == "FALSE") %>% sample_n(70)
+amostra_semana <- rename(amostra_semana,users_semana = users)
+
+amostra_fim_de_semana <- dados_js %>%  filter(is_weekend == "TRUE") %>% sample_n(70)
+amostra_fim_de_semana <- rename(amostra_fim_de_semana,users_fim_de_semana = users)
+
+b <- bootstrap(amostra_semana, median(users_semana))
+mediana_g1 <- CI.bca(b, probs = c(.05, .95))
+mediana_g1
+b <- bootstrap(amostra_fim_de_semana, median(users_fim_de_semana))
+mediana_g2 <- CI.bca(b, probs = c(.05, .95))
+mediana_g2
+```
+
+Iremos utilizar o mesmo nível de confiança do experimento anterior (95%):
 
 ```{r}
-amostra = dados_js %>%  
-  filter(is_weekend == "FALSE") %>% 
-  sample_n(70) %>% 
-  pull(users)
+df <- data.frame(rbind(mediana_g1, 
+                      mediana_g2))
+df$medida = row.names(df)
+df %>% 
+  ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
+  geom_errorbar(width = .2)
+```
 
-media_amostra = mean(amostra)
+Os resultados são iguais os do experimento com a linguagem *Java*, apenas diferindo na quantidade de usuários, ou seja, durante o período de fim de semana a popularidade é menor.
 
-repeticoes = 4000
 
-exp_com_bootstrap <- function(x){
-  boot_x <- sample(x,
-                   size = NROW(x), 
-                   replace = TRUE)
-  return(mean(boot_x))
-}
+### Existe uma diferença significativa entre a popularidade das duas linguagens nos fins de semana?
 
-experimentos = data_frame(i = 1:repeticoes) %>% 
-    rowwise() %>% 
-    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
-    ungroup() 
+Utilizaremos a mediana e a técnica do *bootstrapping* para responder essa pergunta. O nível de confiança utilizado será 95%.
 
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
-  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os dias de semana")
-summary(experimentos)
+```{r}
+amostra_java <- dados_java %>%  filter(is_weekend == "TRUE") %>% sample_n(70)
+amostra_java <- rename(dados_java,users_java = users)
+
+amostra_js <- dados_js %>%  filter(is_weekend == "TRUE") %>% sample_n(70)
+amostra_js <- rename(dados_js,users_js = users)
+
+b <- bootstrap(amostra_java, median(users_java))
+media_java <- CI.bca(b, probs = c(.05, .95))
+media_java
+b <- bootstrap(amostra_js, median(users_js))
+media_js <- CI.bca(b, probs = c(.05, .95))
+media_js
+```
+
+Vamos gerar o gráfico dos intervalos de confiança:
+
+```{r}
+df <- data.frame(rbind(media_java, 
+                      media_js))
+df$medida = row.names(df)
+df %>% 
+  ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
+  geom_errorbar(width = .05)
 
 ```
 
-
-```{r}
-alpha = .05
-quantile(experimentos$media_exp, 
-         probs = c(.05, .95))
-
-cis = experimentos %>% 
-    mutate(diferenca = media_exp - media_amostra) %>% 
-    summarise(l = quantile(diferenca, alpha/2), 
-              u = quantile(diferenca, 1 - alpha/2)) %>% 
-    mutate(ci_lower = media_amostra - u, 
-           ci_upper = media_amostra - l)
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
-  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = media_amostra), colour = "green")
-  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os dias de semana")
-
-```
-
-```{r}
-amostra = dados_js %>%  
-  filter(is_weekend == "TRUE") %>% 
-  sample_n(70) %>% 
-  pull(users)
-
-media_amostra = mean(amostra)
-
-repeticoes = 4000
-
-exp_com_bootstrap <- function(x){
-  boot_x <- sample(x,
-                   size = NROW(x), 
-                   replace = TRUE)
-  return(mean(boot_x))
-}
-
-experimentos = data_frame(i = 1:repeticoes) %>% 
-    rowwise() %>% 
-    mutate(media_exp = exp_com_bootstrap(amostra)) %>%  
-    ungroup() 
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") +
-  labs(y = "Média", x = "Quantidade", title = "Bootstrapping para os fins de semana")
-summary(experimentos)
-
-```
-
-```{r}
-alpha = .05
-quantile(experimentos$media_exp, 
-         probs = c(.05, .95))
-
-cis = experimentos %>% 
-    mutate(diferenca = media_exp - media_amostra) %>% 
-    summarise(l = quantile(diferenca, alpha/2), 
-              u = quantile(diferenca, 1 - alpha/2)) %>% 
-    mutate(ci_lower = media_amostra - u, 
-           ci_upper = media_amostra - l)
-
-ggplot(experimentos, aes(x = media_exp)) + 
-  geom_histogram(binwidth = 1, colour = "darkorange", fill = "white") + 
-  geom_vline(aes(xintercept = cis$ci_lower), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = cis$ci_upper), colour = "blue", size = 1.5) + 
-  geom_vline(aes(xintercept = media_amostra), colour = "green") +
-  labs(y = "Média", x = "Quantidade", title = "Intervalo de confiança para os fins de semana")
-
-```
+Mais uma vez, os intervalos estão distantes um do outro, mostrando que existe uma diferença significativa entre os usuários das duas linguagens durante o fim de semana.
 
