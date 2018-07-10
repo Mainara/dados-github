@@ -22,7 +22,7 @@ library(plotly)
 library(resample, quietly = TRUE)
 ```
 
-Aqui está sendo feita a importação dos dados e filtrando as liguagens que foram escolhidas para serem analisadas.
+Primeiro, será feita a importação dos dados já com as linguagens de interesse filtradas.
 ```{r}
 dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
                         progress = FALSE,
@@ -70,6 +70,8 @@ p =
     theme(legend.position="none") +
   geom_boxplot(colour = "#800000") + facet_wrap( ~ file_extension)
 ggplotly(p, tooltip = "text")
+
+rm(p)
 ```
 
 #### Ano de 2017
@@ -86,9 +88,11 @@ p =
     theme(legend.position="none") +
   geom_boxplot(colour = "#003366") + facet_wrap( ~ file_extension)
 ggplotly(p, tooltip = "text")
+
+rm(p)
 ```
 
-Observando os dois gráficos, verificamos que não há outliers.
+Observando os dois boxplots, verificamos que há valores discrepantes, por esse motivo, iremos utilizar a mediana nos nossos experimentos.
 
 ### Para cada uma delas, há uma diferença significativa na sua popularidade durante a semana e durante o fim de semana? Essa diferença é grande?
 
@@ -110,6 +114,10 @@ mediana_g1
 b <- bootstrap(amostra_fim_de_semana, median(users_fim_de_semana))
 mediana_g2 <- CI.bca(b, probs = c(.05, .95))
 mediana_g2
+
+rm (amostra_fim_de_semana)
+rm(amostra_semana)
+rm(b)
 ```
 
 Aqui, iremos utilizar uma confiança de 95% para verificar os diferentes intervalos:
@@ -121,6 +129,7 @@ df$medida = row.names(df)
 df %>% 
   ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
   geom_errorbar(width = .2)
+rm (df)
 ```
 
 Há claramente uma diferença entre a popularidade durante a semana e o fim de semana, os intervalos não se interceptaram e estão distantes.
@@ -141,6 +150,10 @@ mediana_g1
 b <- bootstrap(amostra_fim_de_semana, median(users_fim_de_semana))
 mediana_g2 <- CI.bca(b, probs = c(.05, .95))
 mediana_g2
+
+rm (amostra_fim_de_semana)
+rm(amostra_semana)
+rm(b)
 ```
 
 Iremos utilizar o mesmo nível de confiança do experimento anterior (95%):
@@ -152,6 +165,8 @@ df$medida = row.names(df)
 df %>% 
   ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
   geom_errorbar(width = .2)
+
+rm(df)
 ```
 
 Os resultados são iguais os do experimento com a linguagem *Java*, apenas diferindo na quantidade de usuários, ou seja, durante o período de fim de semana a popularidade é menor.
@@ -174,6 +189,10 @@ media_java
 b <- bootstrap(amostra_js, median(users_js))
 media_js <- CI.bca(b, probs = c(.05, .95))
 media_js
+
+rm (amostra_java)
+rm(amostra_js)
+rm(b)
 ```
 
 Vamos gerar o gráfico dos intervalos de confiança:
@@ -186,6 +205,7 @@ df %>%
   ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
   geom_errorbar(width = .05)
 
+rm(df)
 ```
 
 Mais uma vez, os intervalos estão distantes um do outro, mostrando que existe uma diferença significativa entre os usuários das duas linguagens durante o fim de semana.
