@@ -1,0 +1,199 @@
+---
+title: "Dados de commits no github"
+date: 2018-07-14
+author: "Mainara Cavalcanti de Farias"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+Este relatório, tem como objetivo analisar dados de commits no github. Utilizaremos uma amostra de dados da atividade global do github entre o período de 01/2016 e 05/2017. As linguagens que vamos analisar serão *C++* e *C#* (duas das linguagens mais populares entre os programadores). 
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(plotly)
+library(resample, quietly = TRUE)
+```
+
+Primeiro, será feita a importação dos dados já com as linguagens de interesse filtradas. As variáveis que iremos utilizar serão *the_year*(o ano referente aos commits), *the_month* (o mês referente aos commits) e *users* (quantidade de usuários que fez commits).
+```{r}
+dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
+                        progress = FALSE,
+                        col_types = cols(file_extension = col_character(),
+                                    month_day = col_integer(),
+                                    the_month = col_integer(),
+                                    the_year = col_integer(),
+                                    users = col_integer())) %>% 
+  filter(file_extension %in% c("cpp", "cs"))
+
+
+dados_cs = dados_github %>% filter(file_extension == "cs")
+dados_cpp = dados_github %>% filter(file_extension == "cpp")
+
+```
+
+Antes de responder algumas perguntas, vamos dar uma olhada na linha do tempo das duas linguagens.
+
+#### Ano de 2016
+
+```{r}
+p =
+  dados_github %>% 
+  filter(the_year == "2016") %>% 
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(fill = "#feffb5") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+#### Ano de 2017
+```{r}
+p =
+  dados_github %>% 
+  filter(the_year == "2017") %>% 
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(fill = "#CD86FF") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+Como nossas perguntas não são relacionadas à diferenças entre as linguagens, apenas o que nos interessa é a distribuição de cada uma separadamente. Porém, com os boxplots gerados, percebemos que os usuários editam mais arquivos em *C++* do que e *C#*. Além disso, verificamos que há valores discrepantes, por esse motivo, iremos utilizar a mediana nos nossos experimentos.
+
+###Há diferença significativa na quantidade de commits da linguagem C# no mês de janeiro de 2016 e 2017?
+
+Assim como na análide do *Prob 4 CP 2* iremos aplicar algumas técnicas de estatística. Primeiro, vamos utilizar o método de reamostragem chamado *bootstrapping*, ele é utilizado para aproximar distribuição na amostra de um levantamento estatístico. Após a aplicação desse método, o *Intervalo de Confiança* será calculado e assim poderemos inferir o resultado da amostra para toda a população.
+
+
+```{r}
+amostra_2016 <- dados_cs %>%  filter(the_month == "1") %>% filter(the_year == "2016") %>%  sample_n(10)
+amostra_2016 <- rename(amostra_2016,users_2016 = users)
+
+amostra_2017 <- dados_cs %>%  filter(the_month == "1") %>% filter(the_year == "2017") %>% sample_n(10)
+amostra_2017 <- rename(amostra_2017,users_2017 = users)
+
+b <- bootstrap(amostra_2016, median(users_2016))
+mediana_g1 <- CI.bca(b, probs = c(.05, .95))
+mediana_g1
+b <- bootstrap(amostra_2017, median(users_2017))
+mediana_g2 <- CI.bca(b, probs = c(.05, .95))
+mediana_g2
+
+rm (amostra_2017)
+rm(amostra_2016)
+rm(b)
+```
+
+Aqui, iremos utilizar uma confiança de 95% para verificar os diferentes intervalos:
+
+```{r}
+df <- data.frame(rbind(mediana_g1, 
+                      mediana_g2))
+df$medida = row.names(df)
+df %>% 
+  ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
+  geom_errorbar(width = .2)
+rm (df)
+```
+
+Acredito que os intervalos estão grandes porque a quantidade de dados que temos é pequena. Além disso, os intervalos se interceptam e não podemos observar uma diferença significativa. Ou seja, com base nos intervalos de confiança obtidos, não podemos dizer que há uma diferença significativa na quantidade de commits da linguagem C# no mês de janeiro de 2016 e 2017.
+
+####E durante os meses de janeiro de 2016 e 2017 há variação na quantidade de commits por dia?
+
+```{r}
+p =
+  dados_cs %>% 
+  filter(the_year == "2017") %>%
+  filter(the_month == "1") %>% 
+  ggplot(aes(x=month_day, 
+             y=users,
+             text = paste("Dia:",month_day,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Dia")+
+    theme(legend.position="none") +
+  geom_bar(stat = 'identity', fill = "#c8d2f4") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+Há variação, mas ela acontece entre intervalos de 5 dias, ou seja, esses dias devem ser nos fins de semana, os outros dias mantem a quantidade de commits em uma pequena faixa de intervalo (1114 e 1313 commits).
+
+###Há diferença na popularidade da linguagem C++ durante períodos de férias e períodos de aulas?
+
+Para essa pergunta, vamos considerar períodos de férias os mêses de janeiro, junho, julho e dezembro.
+
+```{r}
+amostra_ferias <- dados_cpp %>%  filter(the_month %in% c("1", "6", "7", "12")) %>% sample_n(30)
+amostra_ferias <- rename(amostra_ferias,users_ferias = users)
+
+amostra_aulas <- dados_cpp %>%  filter(the_month %in% c("2", "3", "4", "5", "8", "9", "10", "11")) %>% sample_n(30)
+amostra_aulas <- rename(amostra_aulas,users_aulas = users)
+
+b <- bootstrap(amostra_ferias, median(users_ferias))
+mediana_g1 <- CI.bca(b, probs = c(.05, .95))
+mediana_g1
+b <- bootstrap(amostra_aulas, median(users_aulas))
+mediana_g2 <- CI.bca(b, probs = c(.05, .95))
+mediana_g2
+
+rm(amostra_ferias)
+rm(amostra_aulas)
+rm(b)
+```
+
+Aqui, iremos utilizar uma confiança de 95% para verificar os diferentes intervalos:
+
+```{r}
+df <- data.frame(rbind(mediana_g1, 
+                      mediana_g2))
+df$medida = row.names(df)
+df %>% 
+  ggplot(aes(x = medida, ymin = X5., ymax = X95.)) + 
+  geom_errorbar(width = .2)
+rm (df)
+```
+
+Assim como a resposta da primeira pergunta os intervalos se interceptam e não podemos observar uma diferença significativa. Ou seja, com base nos intervalos de confiança obtidos, não podemos dizer que há uma diferença significativa na quantidade de commits da linguagem C++ entre o período de férias e o período de aulas.
+
+####Qual a distribuição dos dados durante o período de férias?
+
+```{r}
+p =
+  dados_cpp %>% 
+  filter(the_year == "2016") %>%
+  filter(the_month %in% c("1", "6", "7", "12")) %>% 
+  ggplot(aes(x=month_day, 
+             y=users,
+             text = paste("Dia:",month_day,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Dia")+
+    theme(legend.position="none") +
+  geom_bar(stat = 'identity', fill = "#afaae7") + facet_wrap( ~ the_month)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+A quantidade de commits apenas varia nos fins de semana, onde a quantidade é menor, mas nos outros período essa quantidade se mantem em uma pequena faixa.
