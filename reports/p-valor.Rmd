@@ -1,0 +1,172 @@
+---
+title: "Dados de commits no github"
+date: 2018-07-22
+author: "Mainara Cavalcanti de Farias"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+## Introdução
+
+<p>Nesse relatório será aplicado testes de hipótese para que possamos responder algumas perguntas *(essas mesmas perguntas foram respondidas utilizando ICs [aqui](https://github.com/Mainara/dados-github/blob/master/reports/novas-perguntas.Rmd))*. </br>
+<p>Antes de verificar os resultados obtidos, é importante que o leitor saiba o que significa e como interpretar o *p-valor*. O *p-valor* é a probabilidade de se obter uma estatística de teste igual ou mais extrema que aquela observada em uma amostra sob a hipótise nula, ou seja, um *p-valor* pequeno significa que a probabilidade de obter um valor da estatística de teste como o observado é muito improvável, levando assim à rejeição da hipótese nula. </br>
+<p>Em um teste clássico de hipóteses, são definidas duas hipóteses, a nula (H0) e a alternativa (H1). Em muitas aplicações da estatística, convenciona-se definir a hipótese alternativa como a hipótese formulada pelo pesquisador, enquanto a hipótese nula é o seu complemento. A princípio, a hipótese nula é considerada a verdadeira. </br>
+
+<p>No fim desse relatório, serão comparados os resultados obtidos aqui e os utilizando ICs. </br>
+<p>Assim como no *[CP3](https://github.com/Mainara/dados-github/blob/master/reports/novas-perguntas.Rmd)*, este relatório tem como objetivo analisar dados de commits no github. Utilizaremos uma amostra de dados da atividade global do github entre o período de 01/2016 e 05/2017. As linguagens que vamos analisar serão *C++* e *C#* (duas das linguagens mais populares entre os programadores). 
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(plotly)
+library(resample, quietly = TRUE)
+```
+
+Primeiro, será feita a importação dos dados já com as linguagens de interesse filtradas. As variáveis que iremos utilizar serão *the_year*(o ano referente aos commits), *the_month* (o mês referente aos commits) e *users* (quantidade de usuários que fez commits).
+
+```{r}
+dados_github = read_csv(here("data/github-users-committing-filetypes.csv"),
+                        progress = FALSE,
+                        col_types = cols(file_extension = col_character(),
+                                    month_day = col_integer(),
+                                    the_month = col_integer(),
+                                    the_year = col_integer(),
+                                    users = col_integer())) %>% 
+  filter(file_extension %in% c("cpp", "cs"))
+
+
+dados_cs = dados_github %>% filter(file_extension == "cs")
+dados_cpp = dados_github %>% filter(file_extension == "cpp")
+
+```
+
+Antes de responder algumas perguntas, vamos dar uma olhada na linha do tempo das duas linguagens.
+
+#### Ano de 2016
+
+```{r}
+p =
+  dados_github %>% 
+  filter(the_year == "2016") %>% 
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(fill = "#e99790") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+#### Ano de 2017
+```{r}
+p =
+  dados_github %>% 
+  filter(the_year == "2017") %>% 
+  ggplot(aes(x=the_month, 
+             y=users,
+             text = paste("Mês:",the_month,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Mês")+
+    theme(legend.position="none") +
+  geom_boxplot(fill = "#ffff00") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+Como nossas perguntas não são relacionadas à diferenças entre as linguagens, apenas o que nos interessa é a distribuição de cada uma separadamente. Porém, com os boxplots gerados, percebemos que os usuários editam mais arquivos em *C++* do que em *C#*. Além disso, verificamos que há valores discrepantes, por esse motivo, iremos utilizar a mediana nos nossos experimentos.
+
+###Há diferença significativa na quantidade de commits da linguagem C# no mês de janeiro de 2016 e 2017?
+
+Primeiro, filtramos os dados de acordo com o nosso interesse (janeiro de 2016 e janeiro de 2017).
+
+```{r}
+dados_2016 <- dados_cs %>%  filter(the_month == "1") %>% filter(the_year == "2016")
+
+
+dados_2017 <- dados_cs %>%  filter(the_month == "1") %>% filter(the_year == "2017")
+
+```
+
+Agora podemos realizar os testes de permutação de modo a implementar nosso teste de hipóteses.
+
+```{r}
+permutationTest2(data = dados_2016, statistic = median(users), data2 = dados_2017)
+```
+
+De acordo com o teste de hipóteses, o *p-valor* é igual a 0.0302. Dessa forma, significa que há apenas uma probabilidade de 3% de se observar uma diferença significativa na quantidade de commits entre os meses de janeiro de 2016 e 2017. Como essa probabilidade é muito pequena, rejeitamos a hipótese nula.</bt>
+Ao comparar esse resultado com o obtido utilizando IC, obsevamos que o resultado obtido foi o mesmo, já que não podemos afirmar que há diferença.
+
+####E durante os meses de janeiro de 2016 e 2017 há variação na quantidade de commits por dia?
+
+```{r}
+p =
+  dados_cs %>% 
+  filter(the_year == "2017") %>%
+  filter(the_month == "1") %>% 
+  ggplot(aes(x=month_day, 
+             y=users,
+             text = paste("Dia:",month_day,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Dia")+
+    theme(legend.position="none") +
+  geom_bar(stat = 'identity', fill = "#33ccff") + facet_wrap( ~ file_extension)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+Há variação, mas ela acontece entre intervalos de 5 dias, ou seja, esses dias devem ser nos fins de semana, os outros dias mantem a quantidade de commits em uma pequena faixa de intervalo (1114 e 1313 commits).
+
+###Há diferença na popularidade da linguagem C++ durante períodos de férias e períodos de aulas?
+
+Para essa pergunta, vamos considerar períodos de férias os mêses de janeiro, junho, julho e dezembro.
+
+```{r}
+dados_ferias <- dados_cpp %>%  filter(the_month %in% c("1", "6", "7", "12")) 
+
+dados_aulas <- dados_cpp %>%  filter(the_month %in% c("2", "3", "4", "5", "8", "9", "10", "11"))
+
+```
+
+Agora podemos realizar os testes de permutação de modo a implementar nosso teste de hipóteses.
+
+```{r}
+permutationTest2(data = dados_ferias, statistic = median(users), data2 = dados_aulas)
+```
+De acordo com o teste de hipóteses, o *p-valor* é igual a 0.945. Dessa forma, significa que há probabilidade de 94% de se observar uma diferença de significativa na quantidade de commits entre o período de férias e o período de aulas. Como essa probabilidade é grande, aceitamos a hipótese nula.</bt>
+Ao comparar esse resultado com o obtido utilizando IC, obsevamos que o resultado foi diferente, o que é estranho, portanto, acredito que houve um erro ao fazer o calculo do IC.
+
+####Qual a distribuição dos dados durante o período de férias?
+
+```{r}
+p =
+  dados_cpp %>% 
+  filter(the_year == "2016") %>%
+  filter(the_month %in% c("1", "6", "7", "12")) %>% 
+  ggplot(aes(x=month_day, 
+             y=users,
+             text = paste("Dia:",month_day,
+                            "\nQuantidade de Usuários:",
+                            users))) +
+     labs(y = "Quantidade de usuários", x = "Dia")+
+    theme(legend.position="none") +
+  geom_bar(stat = 'identity', fill = "#0066ff") + facet_wrap( ~ the_month)
+ggplotly(p, tooltip = "text")
+
+rm(p)
+```
+
+A quantidade de commits apenas varia nos fins de semana, onde a quantidade é menor, mas nos outros período essa quantidade se mantem em uma pequena faixa.
